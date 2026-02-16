@@ -177,6 +177,9 @@ class FinancialMaster:
 
         result = {
             "doc_id": self._data.get("doc_id", ""),
+            "security_code": self._data.get("security_code"),
+            "fiscal_year_end": self._data.get("fiscal_year_end"),
+            "report_type": self._data.get("report_type"),
             "current_year": {"metrics": current_metrics},
             "prior_year": {"metrics": prior_metrics},
         }

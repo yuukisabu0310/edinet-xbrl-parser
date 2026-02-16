@@ -52,6 +52,8 @@ DEI_TAGS = [
     ("CompanyName", "company_name"),
     ("AccountingStandardsDEI", "accounting_standard"),
     ("WhetherConsolidatedFinancialStatementsArePrepared", "is_consolidated_dei"),
+    ("CurrentPeriodEndDateDEI", "current_period_end_date"),
+    ("CurrentFiscalYearEndDateDEI", "current_fiscal_year_end_date"),
 ]
 
 
@@ -283,12 +285,13 @@ class FactNormalizer:
         return out
 
     def _pick_dei(self, facts: list[dict[str, str]]) -> dict[str, Any]:
-        """DEIタグから security_code, company_name, accounting_standard, is_consolidated を取得。連結優先。"""
+        """DEIタグから security_code, company_name, accounting_standard, is_consolidated, fiscal_year_end を取得。連結優先。"""
         result: dict[str, Any] = {
             "security_code": None,
             "company_name": None,
             "accounting_standard": None,
             "is_consolidated": True,
+            "fiscal_year_end": None,
         }
         for keyword, key in DEI_TAGS:
             consolidated_f: dict[str, str] | None = None
@@ -313,7 +316,26 @@ class FactNormalizer:
                 result["company_name"] = (chosen.get("value") or "").strip() or None
             elif key == "accounting_standard":
                 result["accounting_standard"] = (chosen.get("value") or "").strip() or None
+            elif key in ("current_period_end_date", "current_fiscal_year_end_date"):
+                # fiscal_year_end を優先順位で取得（CurrentFiscalYearEndDateDEI > CurrentPeriodEndDateDEI）
+                value = (chosen.get("value") or "").strip()
+                if value and result["fiscal_year_end"] is None:
+                    result["fiscal_year_end"] = value
+                elif key == "current_fiscal_year_end_date" and value:
+                    # CurrentFiscalYearEndDateDEI の方が優先
+                    result["fiscal_year_end"] = value
         return result
+
+    def _detect_report_type(self) -> str:
+        """
+        書類種別を判定。
+        有価証券報告書 → "annual"
+        四半期報告書 → "quarterly"
+        判定不能 → "unknown"
+        """
+        # 暫定的に "annual" を返す（有価証券報告書が最も一般的）
+        # 将来的には、XBRLParser からファイル名を取得して判定する
+        return "annual"
 
     def normalize(self) -> dict[str, Any]:
         """
@@ -330,12 +352,17 @@ class FactNormalizer:
         current_cf = self._pick_duration_facts(facts, CF_TAGS, is_current=True)
         prior_cf = self._pick_duration_facts(facts, CF_TAGS, is_current=False)
 
+        # report_type の判定（暫定的にファイル名から判定できない場合は "unknown"）
+        report_type = self._detect_report_type()
+
         return {
             "doc_id": self._parsed.get("doc_id", ""),
             "security_code": dei["security_code"],
             "company_name": dei["company_name"],
             "accounting_standard": dei["accounting_standard"],
             "is_consolidated": dei["is_consolidated"],
+            "fiscal_year_end": dei["fiscal_year_end"],
+            "report_type": report_type,
             "current_year": {
                 "pl": current_pl,
                 "bs": current_bs,

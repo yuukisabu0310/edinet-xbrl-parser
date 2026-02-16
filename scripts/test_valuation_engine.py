@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 project_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(project_root))
 sys.path.insert(0, str(project_root / "src"))
 
 from parser.xbrl_parser import XBRLParser
@@ -17,6 +18,7 @@ from normalizer.fact_normalizer import FactNormalizer
 from financial.financial_master import FinancialMaster
 from market.market_integrator import MarketIntegrator
 from valuation.valuation_engine import ValuationEngine
+from output.json_exporter import JSONExporter
 
 if __name__ == "__main__":
     xbrl_path = project_root / "data/edinet/raw_xbrl/2025/S100W67S/jpcrp030000-asr-001_E05325-000_2025-03-31_01_2025-06-25.xbrl"
@@ -45,10 +47,15 @@ if __name__ == "__main__":
     engine = ValuationEngine(integrated_data)
     result = engine.evaluate()
 
+    # JSON エクスポート
+    exporter = JSONExporter()
+    json_path = exporter.export(result)
+
     print("=" * 60)
     print("ValuationEngine 出力")
     print("=" * 60)
     print("doc_id:", result["doc_id"])
+    print("JSON保存パス:", json_path)
 
     v = result["current_year"].get("valuation") or {}
     print("\n--- Valuation ---")
