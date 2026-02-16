@@ -106,6 +106,7 @@ def _compute_metrics(
         except (TypeError, ValueError):
             pass
 
+    eps = pl.get("earnings_per_share")
     return {
         "equity": float(equity) if equity is not None else None,
         "interest_bearing_debt": float(interest_bearing_debt) if interest_bearing_debt is not None else None,
@@ -113,6 +114,7 @@ def _compute_metrics(
         "net_sales": float(net_sales) if net_sales is not None else None,
         "operating_income": float(operating_income) if operating_income is not None else None,
         "profit_loss": float(profit_loss) if profit_loss is not None else None,
+        "earnings_per_share": float(eps) if eps is not None else None,
         "free_cash_flow": float(fcf) if fcf is not None else None,
         "roe": _safe_div(profit_loss, equity),
         "roa": _safe_div(profit_loss, total_assets),
