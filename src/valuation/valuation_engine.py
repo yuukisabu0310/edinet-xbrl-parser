@@ -124,6 +124,9 @@ class ValuationEngine:
         """
         integrated_data をベースに、current_year に valuation を付与した辞書を返す。
         入力の integrated_data は変更しない。
+        
+        将来的に security_code を使ってマーケットデータを取得する場合の
+        フォールバック処理（5桁→4桁）を想定した実装。
         """
         result = copy.deepcopy(self._data)
         current_year = result.get("current_year")
@@ -133,12 +136,28 @@ class ValuationEngine:
 
         metrics = current_year.get("metrics") or {}
         market = current_year.get("market") or {}
+        
+        # security_code が存在する場合、マーケットデータ取得時のフォールバック処理を準備
+        # 現在はマーケットデータが空のため、この処理は実行されない
+        security_code = result.get("security_code")
+        if security_code and isinstance(security_code, str) and security_code.isdigit():
+            # 5桁の数値の場合、4桁にフォールバックする処理を準備
+            # 将来的にマーケットデータAPIを統合する際に使用
+            if len(security_code) == 5:
+                four_digit_code = security_code[:4]
+                logger.debug(
+                    "ValuationEngine: security_code=%s, 4桁フォールバック=%s",
+                    security_code,
+                    four_digit_code
+                )
+        
         valuation = _compute_valuation(metrics, market)
         current_year["valuation"] = valuation
 
         logger.info(
-            "ValuationEngine: doc_id=%s, per=%s",
+            "ValuationEngine: doc_id=%s, security_code=%s, per=%s",
             result.get("doc_id"),
+            security_code,
             valuation.get("per"),
         )
         return result

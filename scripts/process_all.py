@@ -76,7 +76,19 @@ if __name__ == "__main__":
             master = FinancialMaster(normalized_data)
             financial_data = master.compute()
 
+            # security_code のフォールバック処理（5桁→4桁）
+            # 将来的にマーケットデータAPIを統合する際に使用
+            security_code = financial_data.get("security_code")
+            if security_code and isinstance(security_code, str) and security_code.isdigit():
+                if len(security_code) == 5:
+                    # 5桁の場合は4桁にフォールバック
+                    four_digit_code = security_code[:4]
+                    print(f"  security_code: {security_code} -> 4桁フォールバック: {four_digit_code}")
+                    # 将来的にマーケットデータ取得時に使用
+                    # 現在はマーケットデータが空のため、この処理は実行されない
+
             # マーケットデータは暫定的に空（実際の運用では外部APIから取得）
+            # security_code が見つからない場合でも、None として処理を継続
             market_data = {
                 "stock_price": None,
                 "shares_outstanding": None,
@@ -90,12 +102,26 @@ if __name__ == "__main__":
             result = engine.evaluate()
 
             # JSON エクスポート
+            # security_code が None でも処理を継続（JSONExporter でフォールバック処理あり）
             exporter = JSONExporter()
             json_path = exporter.export(result)
             print(f"  -> Saved: {json_path}")
             
+        except ValueError as e:
+            # security_code 関連のエラーは WARNING として処理を継続
+            error_msg = str(e)
+            if "security_code" in error_msg.lower():
+                print(f"WARNING: {xbrl_path.name} - {error_msg}")
+                print("  security_code が見つかりませんが、処理を継続します。")
+                continue
+            else:
+                # その他の ValueError は通常のエラーとして処理
+                print(f"ERROR: Failed to process {xbrl_path.name}: {e}")
+                continue
         except Exception as e:
             print(f"ERROR: Failed to process {xbrl_path.name}: {e}")
+            import traceback
+            traceback.print_exc()
             continue
 
     print("\nProcessing completed")
