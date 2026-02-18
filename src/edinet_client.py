@@ -3,10 +3,18 @@ EDINET API v2 クライアント
 """
 import time
 import logging
+from pathlib import Path
+import sys
 from typing import List, Dict, Any, Optional
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+_src_dir = Path(__file__).resolve().parent
+if str(_src_dir) not in sys.path:
+    sys.path.insert(0, str(_src_dir))
+
+from constants import TARGET_DOC_TYPE_CODES
 
 
 class EdinetClient:
@@ -80,7 +88,10 @@ class EdinetClient:
         documents_data: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """
-        有価証券報告書のみをフィルタリング
+        有価証券報告書・四半期報告書のみをフィルタリング。
+
+        formCode="030000" は大量保有報告書なども含むため、
+        docTypeCode で厳密に絞り込む。
         
         Args:
             documents_data: 書類一覧のJSONデータ
@@ -93,8 +104,8 @@ class EdinetClient:
         
         filtered = []
         for doc in documents_data["results"]:
-            # 条件チェック: formCode == "030000"（有価証券報告書）のみ
-            if doc.get("formCode") == "030000":
+            doc_type = doc.get("docTypeCode")
+            if doc_type in TARGET_DOC_TYPE_CODES:
                 filtered.append(doc)
         
         return filtered

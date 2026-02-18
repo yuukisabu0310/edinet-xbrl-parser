@@ -19,10 +19,10 @@ sys.path.insert(0, str(project_root / "src"))
 env_path = project_root / ".env"
 if env_path.exists():
     load_dotenv(env_path)
-else:
-    # .env が存在しない場合はデフォルト値を設定
-    if "DATASET_PATH" not in os.environ:
-        os.environ["DATASET_PATH"] = "./financial-dataset"
+
+# DATASET_PATH が設定されていない場合はデフォルト値を設定
+if "DATASET_PATH" not in os.environ:
+    os.environ["DATASET_PATH"] = "./financial-dataset"
 
 from output.json_exporter import JSONExporter
 
@@ -32,6 +32,8 @@ if __name__ == "__main__":
     dummy_valuation_dict = {
         "doc_id": "S100W67S",
         "security_code": "4827",
+        "fiscal_year_end": "2025-03-31",
+        "report_type": "annual",
         "current_year": {
             "metrics": {
                 "equity": 5805695000.0,
