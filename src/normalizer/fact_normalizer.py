@@ -307,11 +307,25 @@ class FactNormalizer:
                         non_consolidated_f = f
             chosen = consolidated_f or non_consolidated_f
             if chosen is None:
+                # デバッグログ: タグが見つからない場合
+                if key == "security_code":
+                    logger.warning(
+                        "SecurityCodeDEI タグが見つかりませんでした。"
+                        "doc_id=%s, 検索キーワード=%s",
+                        self._parsed.get("doc_id", "unknown"),
+                        keyword
+                    )
                 continue
             if key == "is_consolidated_dei":
                 result["is_consolidated"] = _parse_consolidated_dei(chosen.get("value", ""))
             elif key == "security_code":
                 result["security_code"] = (chosen.get("value") or "").strip() or None
+                if result["security_code"]:
+                    logger.info(
+                        "security_code を抽出しました: %s (doc_id=%s)",
+                        result["security_code"],
+                        self._parsed.get("doc_id", "unknown")
+                    )
             elif key == "company_name":
                 result["company_name"] = (chosen.get("value") or "").strip() or None
             elif key == "accounting_standard":
@@ -324,6 +338,13 @@ class FactNormalizer:
                 elif key == "current_fiscal_year_end_date" and value:
                     # CurrentFiscalYearEndDateDEI の方が優先
                     result["fiscal_year_end"] = value
+        
+        # security_code が None の場合、警告を出力
+        if result["security_code"] is None:
+            logger.warning(
+                "security_code が抽出できませんでした。doc_id=%s",
+                self._parsed.get("doc_id", "unknown")
+            )
         return result
 
     def _detect_report_type(self) -> str:

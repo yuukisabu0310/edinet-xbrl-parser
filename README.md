@@ -8,10 +8,33 @@
 
 ```
 fundamental-engine         ← 本リポジトリ（財務Fact生成）
-├── financial-dataset       財務Factデータレイク
-├── market-dataset          (予定) 市場Factデータレイク
-├── valuation-engine        (予定) 派生指標計算エンジン
+├── financial-dataset       財務Factデータレイク（確定決算のみ）
+├── market-dataset          (予定) 市場Factデータレイク（株価・出来高）
+├── valuation-engine        (予定) 派生指標計算エンジン（PER/PBR/PSR/PEG）
 └── screening-engine        (予定) 投資条件評価エンジン
+```
+
+### レイヤー分離アーキテクチャ
+
+```
+┌─────────────────────────────────────┐
+│         screening-engine            │  ビジネスロジック層
+│  PER<15, ROE>15%, 売上成長率>10%     │  (投資判断)
+└──────────────┬──────────────────────┘
+               │
+┌──────────────▼──────────────────────┐
+│         valuation-engine            │  計算エンジン層
+│  PER / PBR / PSR / PEG             │  (Derived: 再計算可能)
+└──────┬──────────────────┬───────────┘
+       │ JOIN             │ JOIN
+┌──────▼──────┐  ┌────────▼───────────┐
+│ financial-  │  │   market-dataset   │  Factデータレイク層
+│   dataset   │  │   株価/出来高/配当  │  (不可逆な事実のみ)
+│ 売上/利益   │  │                    │
+│ ROE/EPS/FCF │  │                    │
+└──────┬──────┘  └────────────────────┘
+       │
+ fundamental-engine (本リポジトリ)
 ```
 
 ### 責務
@@ -26,6 +49,17 @@ fundamental-engine         ← 本リポジトリ（財務Fact生成）
 - **データソース非依存**: リポジトリ名・アーキテクチャはEDINETに依存しない。将来他のデータソースも統合可能
 - **FactとDerivedの分離**: financial-datasetには確定決算の財務Factのみを保存。PER/PBR等の派生指標はvaluation-engineで算出
 - **レイヤー責務の厳守**: 各リポジトリは単一責任を持つ
+- **再計算可能な値は保存しない**: 株価依存の指標（PER/PBR/PSR等）はデータレイクに含めない
+
+## パイプライン
+
+```
+EDINET API → Download → Extract → Parse → Normalize → FinancialMaster → JSONExport
+                                                                              ↓
+                                                              financial-dataset/{report_type}/{data_version}/{code}.json
+```
+
+FinancialMaster の出力が直接 JSONExporter に渡される。MarketIntegrator / ValuationEngine はパイプラインに含めない（別レイヤーの責務）。
 
 ## 機能
 
@@ -155,6 +189,54 @@ config/
 
 1. **ファイル名による早期スキップ**: ファイル名に `jplvh`（大量保有報告書）/ `jpaud`（監査報告書）等のパターンが含まれる場合
 2. **必須項目検証**: `security_code` または `fiscal_year_end` が取得できない場合
+
+## JSON出力仕様（schema_version 2.0）
+
+financial-dataset に保存される JSON は以下の構造のみを持つ。market / valuation セクションは含まない。
+
+```json
+{
+  "schema_version": "2.0",
+  "engine_version": "1.0.0",
+  "data_version": "2025FY",
+  "generated_at": "2026-02-18T12:00:00Z",
+  "doc_id": "S100W67S",
+  "security_code": "48270",
+  "fiscal_year_end": "2025-03-31",
+  "report_type": "annual",
+  "current_year": {
+    "metrics": {
+      "equity": 5805695000.0,
+      "interest_bearing_debt": null,
+      "total_assets": 30554571000.0,
+      "net_sales": 16094118000.0,
+      "operating_income": 1461488000.0,
+      "profit_loss": 828459000.0,
+      "earnings_per_share": 199.68,
+      "free_cash_flow": 981206000.0,
+      "roe": 0.1427,
+      "roa": 0.0271,
+      "operating_margin": 0.0908,
+      "net_margin": 0.0515,
+      "equity_ratio": 0.19,
+      "de_ratio": null,
+      "sales_growth": 0.2002,
+      "profit_growth": 0.1148,
+      "eps_growth": 0.1148
+    }
+  },
+  "prior_year": {
+    "metrics": { ... }
+  }
+}
+```
+
+### 含めないデータ（レイヤー分離原則）
+
+| データ | 理由 | 所属レイヤー |
+|---|---|---|
+| stock_price / volume / shares_outstanding | 市場Fact | market-dataset |
+| PER / PBR / PSR / PEG / dividend_yield | 派生指標（Derived） | valuation-engine |
 
 ## データセット自動生成とプッシュ
 
