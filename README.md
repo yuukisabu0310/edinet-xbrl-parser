@@ -192,8 +192,8 @@ config/
 
 ## JSON出力仕様（schema_version 1.0）
 
-financial-dataset には**財務Factのみ**を保存する。Derived指標・null値・空データは一切含めない。
-EDINET原本に対して100%トレーサブルなデータ構造を採用する。
+financial-dataset には**財務Factのみ**を保存する。Derived指標は含めない。
+値が取得できなかった項目は `null` として出力する。EDINET原本に対して100%トレーサブルなデータ構造を採用する。
 
 ```json
 {
@@ -220,6 +220,7 @@ EDINET原本に対して100%トレーサブルなデータ構造を採用する�
       "operating_income": 7381000000.0,
       "net_income_attributable_to_parent": 5870000000.0,
       "earnings_per_share_basic": 91.44,
+      "earnings_per_share_diluted": null,
       "shares_outstanding": 64200000
     }
   }
@@ -234,13 +235,13 @@ EDINET原本に対して100%トレーサブルなデータ構造を採用する�
 | `consolidation_type` | `consolidated` / `non_consolidated`（連結/個別でROE等が変わるため明示） |
 | `accounting_standard` | `JGAAP` / `IFRS` / `US-GAAP`（会計基準による指標定義の違いを明示） |
 | `currency` | 通貨コード（固定: `JPY`） |
-| `unit` | 単位（固定: `JPY` — 百万円問題を完全排除） |
+| `unit` | 単位（固定: `JPY` — Normalizer が `decimals` 属性に基づき円単位に正規化済み） |
 
 ### 出力ルール
 
 - **Factのみ**: 財務諸表に記載された数値のみ出力
-- **null出力禁止**: 値が取得できなかった項目はキーごと省略
-- **空prior_year省略**: prior_yearに有効なFactがなければキー自体を出力しない
+- **null許容**: 値が取得できなかった項目は `null` として出力（キーは常に存在）
+- **空prior_year省略**: prior_yearに有効なFact（1つ以上の非null値）がなければキー自体を出力しない
 - **Derived禁止**: ROE/ROA/ROIC/マージン/成長率/FCF/CAGR等の再計算可能な値はvaluation-engineの責務
 - **security_code正規化**: 5桁かつ末尾"0"の場合のみ末尾1桁を削除（例: "27340" → "2734"）
 - **会計定義明示**: consolidation_type / accounting_standard を必ず出力
@@ -270,14 +271,25 @@ EDINET原本に対して100%トレーサブルなデータ構造を採用する�
 | stock_price / volume | 市場Fact | market-dataset |
 | PER / PBR / PSR / PEG / dividend_yield | Derived（再計算可能） | valuation-engine |
 
+### decimals 正規化（単位保証）
+
+XBRL の数値タグには `decimals` 属性が付与される（例: `decimals="0"` → 円単位、`decimals="-6"` → 百万円単位）。
+FactNormalizer は値変換時に `decimals` 属性を参照し、すべての数値を **円単位（JPY）** に正規化する。
+
+| decimals | 意味 | スケール係数 |
+|---|---|---|
+| `"0"` | 円単位 | 1 |
+| `"-3"` | 千円単位 | 1,000 |
+| `"-6"` | 百万円単位 | 1,000,000 |
+| `"INF"` / 空 | スケーリング不要 | 1 |
+
 ### 出力前バリデーション
 
 JSONExporter は出力前に以下を検証する：
 
 1. metrics 内に Derived 指標が混入していないか → **エラー**
-2. null 値が存在しないか → **エラー**
-3. metrics が空でないか → **警告**
-4. EPS整合チェック: `|EPS_basic - (net_income / shares_outstanding)|` の誤差率が1%以内か → **警告**
+2. 全項目がnullでないか → **警告**
+3. EPS整合チェック: `|EPS_basic - (net_income / shares_outstanding)|` の誤差率が1%以内か → **警告**
 
 ## データセット自動生成とプッシュ
 

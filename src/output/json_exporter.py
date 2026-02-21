@@ -3,7 +3,7 @@ JSONExporter
 FinancialMaster の出力を financial-dataset へ永続化する。
 
 financial-dataset は「確定決算の財務Factのみ」を保存するデータレイク。
-Derived指標・null値・空データは一切含めない。
+Derived指標は含めない。値が取得できなかった項目はnullとして出力する。
 
 schema_version 2.1:
   - consolidation_type / accounting_standard / currency / unit をトップレベルに追加
@@ -90,8 +90,7 @@ def _validate_metrics(metrics: dict[str, Any], label: str, security_code: str) -
     出力前バリデーション。
 
     1. Derived指標が混入していないか
-    2. null値が存在しないか
-    3. metricsが空でないか
+    2. 全項目がnullでないか（警告）
     """
     leaked = set(metrics.keys()) & DERIVED_KEYS
     if leaked:
@@ -100,15 +99,9 @@ def _validate_metrics(metrics: dict[str, Any], label: str, security_code: str) -
         )
         raise ValueError(f"Derived指標が metrics に混入しています: {leaked}")
 
-    null_keys = [k for k, v in metrics.items() if v is None]
-    if null_keys:
-        logger.error(
-            "VALIDATION FAIL [%s] %s: null値が存在 %s", security_code, label, null_keys,
-        )
-        raise ValueError(f"null値が metrics に存在します: {null_keys}")
-
-    if not metrics:
-        logger.warning("VALIDATION WARN [%s] %s: metricsが空", security_code, label)
+    non_null_count = sum(1 for v in metrics.values() if v is not None)
+    if non_null_count == 0:
+        logger.warning("VALIDATION WARN [%s] %s: 全項目がnull", security_code, label)
 
 
 def _validate_eps_consistency(
@@ -144,7 +137,8 @@ class JSONExporter:
     出力先: {DATASET_PATH}/{report_type}/{data_version}/{security_code}.json
 
     financial-dataset には財務Factのみを保存する。
-    Derived指標・null値は出力しない。空のprior_yearは省略する。
+    Derived指標は出力しない。値が取得できなかった項目はnullで出力する。
+    全項目がnullの年度ブロックは省略する。
     """
 
     def __init__(self, base_dir: str | None = None) -> None:
@@ -188,20 +182,19 @@ class JSONExporter:
             logger.warning("Failed to parse fiscal_year_end: %s, using UNKNOWN", e)
             return "UNKNOWN"
 
-    def _sanitize_metrics(self, year_data: dict[str, Any]) -> dict[str, float | int] | None:
+    def _sanitize_metrics(self, year_data: dict[str, Any]) -> dict[str, float | int | None] | None:
         """
         year_data から metrics を抽出し、Factのみを残す。
-        有効なFactがなければ None を返す。
+        Derived指標は除去するが、null値はそのまま保持する。
+        全項目がnullでも metrics 自体は返す（年度ブロックの存在判定は呼び出し側で行う）。
         """
         metrics = year_data.get("metrics")
         if not metrics or not isinstance(metrics, dict):
             return None
 
-        clean: dict[str, float | int] = {}
+        clean: dict[str, float | int | None] = {}
         for key, value in metrics.items():
             if key in DERIVED_KEYS:
-                continue
-            if value is None:
                 continue
             clean[key] = value
 

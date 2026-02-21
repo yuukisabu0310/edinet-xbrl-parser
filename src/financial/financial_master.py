@@ -55,12 +55,12 @@ def _extract_facts(
     pl: dict[str, Any],
     bs: dict[str, Any],
     cf: dict[str, Any],
-) -> dict[str, float | int]:
+) -> dict[str, float | int | None]:
     """
     単年分のPL/BS/CFから財務Factのみを抽出する。
-    値がNoneの項目は出力しない（null出力禁止）。
+    値が取得できなかった項目は None として保持する。
     """
-    candidates: dict[str, float | int | None] = {
+    return {
         "total_assets": _safe_float(bs.get("total_assets")),
         "equity": _resolve_equity(bs),
         "interest_bearing_debt": _resolve_interest_bearing_debt(bs),
@@ -71,8 +71,6 @@ def _extract_facts(
         "earnings_per_share_diluted": _safe_float(pl.get("diluted_earnings_per_share")),
         "shares_outstanding": _safe_int(bs.get("shares_outstanding")),
     }
-
-    return {k: v for k, v in candidates.items() if v is not None}
 
 
 class FinancialMaster:
@@ -109,20 +107,25 @@ class FinancialMaster:
             "accounting_standard": self._data.get("accounting_standard"),
         }
 
-        if current_facts:
+        current_has_data = any(v is not None for v in current_facts.values())
+        prior_has_data = any(v is not None for v in prior_facts.values())
+
+        if current_has_data:
             year_block: dict[str, Any] = {"metrics": current_facts}
             current_period = current.get("period")
             if current_period:
                 year_block["period"] = current_period
             result["current_year"] = year_block
 
-        if prior_facts:
+        if prior_has_data:
             year_block = {"metrics": prior_facts}
             prior_period = prior.get("period")
             if prior_period:
                 year_block["period"] = prior_period
             result["prior_year"] = year_block
 
+        current_count = sum(1 for v in current_facts.values() if v is not None)
+        prior_count = sum(1 for v in prior_facts.values() if v is not None)
         logger.info("FinancialMaster compute: doc_id=%s, current=%d facts, prior=%d facts",
-                     result["doc_id"], len(current_facts), len(prior_facts))
+                     result["doc_id"], current_count, prior_count)
         return result

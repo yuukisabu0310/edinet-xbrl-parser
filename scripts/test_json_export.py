@@ -48,6 +48,7 @@ if __name__ == "__main__":
                 "operating_income": 7381000000.0,
                 "net_income_attributable_to_parent": 5870000000.0,
                 "earnings_per_share_basic": 91.44,
+                "earnings_per_share_diluted": None,
                 "shares_outstanding": 64200000,
             },
         },
@@ -60,6 +61,7 @@ if __name__ == "__main__":
                 "operating_income": 6500000000.0,
                 "net_income_attributable_to_parent": 5000000000.0,
                 "earnings_per_share_basic": 77.88,
+                "earnings_per_share_diluted": None,
                 "shares_outstanding": 64200000,
             },
         },
@@ -121,9 +123,8 @@ if __name__ == "__main__":
     leaked = all_keys & PROHIBITED_KEYS
     checks.append(("Derived/Market キー混入なし", len(leaked) == 0))
 
-    all_values = list(current_metrics.values()) + list(prior_metrics.values())
-    has_null = any(v is None for v in all_values)
-    checks.append(("null値なし", not has_null))
+    checks.append(("earnings_per_share_diluted がnullで出力",
+                    "earnings_per_share_diluted" in current_metrics and current_metrics["earnings_per_share_diluted"] is None))
 
     # security_code 正規化ロジックテスト
     sc_cases = [

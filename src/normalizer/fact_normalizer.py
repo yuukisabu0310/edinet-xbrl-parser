@@ -97,24 +97,52 @@ def _is_consolidated_context(context_ref: str) -> bool:
     return "NonConsolidated" not in context_ref
 
 
-def _parse_numeric_value(value: str) -> int | None:
-    """文字列を数値に変換。空はNone、例外時もNone。"""
+def _decimals_scale(decimals: str) -> int:
+    """
+    XBRL decimals属性から円単位へのスケール係数（10のべき乗）を返す。
+
+    decimals="0"  → 円単位そのまま → 10**0 = 1
+    decimals="-3" → 千円単位 → 10**3 = 1000
+    decimals="-6" → 百万円単位 → 10**6 = 1000000
+    decimals="INF" or 空 → スケーリング不要 → 1
+    """
+    if not decimals or decimals.upper() == "INF":
+        return 1
+    try:
+        d = int(decimals)
+    except (ValueError, TypeError):
+        return 1
+    if d < 0:
+        return 10 ** abs(d)
+    return 1
+
+
+def _parse_numeric_value(value: str, decimals: str = "") -> int | None:
+    """文字列を数値に変換し、decimals属性に基づいて円単位に正規化する。"""
     if value is None or (isinstance(value, str) and not value.strip()):
         return None
     try:
-        return int(value.strip())
+        raw = int(value.strip())
     except (ValueError, TypeError):
         return None
+    scale = _decimals_scale(decimals)
+    if scale != 1:
+        logger.debug("decimals=%s → scale=%d applied to value=%d", decimals, scale, raw)
+    return raw * scale
 
 
-def _parse_float_value(value: str) -> float | None:
-    """文字列をfloatに変換。空はNone、例外時もNone。EPS用。"""
+def _parse_float_value(value: str, decimals: str = "") -> float | None:
+    """文字列をfloatに変換し、decimals属性に基づいて円単位に正規化する。EPS用。"""
     if value is None or (isinstance(value, str) and not value.strip()):
         return None
     try:
-        return float(value.strip())
+        raw = float(value.strip())
     except (ValueError, TypeError):
         return None
+    scale = _decimals_scale(decimals)
+    if scale != 1:
+        logger.debug("decimals=%s → scale=%d applied to float value=%.4f", decimals, scale, raw)
+    return raw * scale
 
 
 def _parse_consolidated_dei(value: str) -> bool:
@@ -196,7 +224,7 @@ class FactNormalizer:
             # 連結優先
             chosen = consolidated_candidates[0] if consolidated_candidates else (non_consolidated_candidates[0] if non_consolidated_candidates else None)
             if chosen is not None:
-                out[key] = _parse_numeric_value(chosen.get("value"))
+                out[key] = _parse_numeric_value(chosen.get("value"), chosen.get("decimals", ""))
             else:
                 out[key] = None
         return out
@@ -229,7 +257,7 @@ class FactNormalizer:
                     non_consolidated_candidates.append(f)
             chosen = consolidated_candidates[0] if consolidated_candidates else (non_consolidated_candidates[0] if non_consolidated_candidates else None)
             if chosen is not None:
-                out[key] = _parse_float_value(chosen.get("value"))
+                out[key] = _parse_float_value(chosen.get("value"), chosen.get("decimals", ""))
         return out
 
     def _extract_pl(
@@ -282,7 +310,7 @@ class FactNormalizer:
                     non_consolidated_candidates.append(f)
             chosen = consolidated_candidates[0] if consolidated_candidates else (non_consolidated_candidates[0] if non_consolidated_candidates else None)
             if chosen is not None:
-                out[key] = _parse_numeric_value(chosen.get("value"))
+                out[key] = _parse_numeric_value(chosen.get("value"), chosen.get("decimals", ""))
             else:
                 out[key] = None
         return out
