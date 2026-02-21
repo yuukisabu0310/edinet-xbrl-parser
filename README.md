@@ -31,7 +31,7 @@ fundamental-engine         ← 本リポジトリ（財務Fact生成）
 │ financial-  │  │   market-dataset   │  Factデータレイク層
 │   dataset   │  │   株価/出来高/配当  │  (不可逆な事実のみ)
 │ 売上/利益   │  │                    │
-│ ROE/EPS/FCF │  │                    │
+│ EPS/FCF     │  │                    │
 └──────┬──────┘  └────────────────────┘
        │
  fundamental-engine (本リポジトリ)
@@ -41,7 +41,7 @@ fundamental-engine         ← 本リポジトリ（財務Fact生成）
 
 - 有価証券報告書・四半期報告書のXBRL取得
 - タグの正規化（PL / BS / CF / DEI）
-- 財務指標の算出（ROE / ROA / マージン / 成長率等）
+- 財務Factの統合（equity / total_assets / net_sales / profit_loss / EPS / FCF等）
 - financial-datasetへのJSON出力・manifest管理
 
 ### 設計方針
@@ -192,7 +192,7 @@ config/
 
 ## JSON出力仕様（schema_version 2.0）
 
-financial-dataset に保存される JSON は以下の構造のみを持つ。market / valuation セクションは含まない。
+financial-dataset には**財務Factのみ**を保存する。Derived指標・null値・空データは一切含めない。
 
 ```json
 {
@@ -207,36 +207,64 @@ financial-dataset に保存される JSON は以下の構造のみを持つ。ma
   "current_year": {
     "metrics": {
       "equity": 5805695000.0,
-      "interest_bearing_debt": null,
       "total_assets": 30554571000.0,
       "net_sales": 16094118000.0,
       "operating_income": 1461488000.0,
       "profit_loss": 828459000.0,
       "earnings_per_share": 199.68,
-      "free_cash_flow": 981206000.0,
-      "roe": 0.1427,
-      "roa": 0.0271,
-      "operating_margin": 0.0908,
-      "net_margin": 0.0515,
-      "equity_ratio": 0.19,
-      "de_ratio": null,
-      "sales_growth": 0.2002,
-      "profit_growth": 0.1148,
-      "eps_growth": 0.1148
+      "free_cash_flow": 981206000.0
     }
   },
   "prior_year": {
-    "metrics": { ... }
+    "metrics": {
+      "equity": 5018725000.0,
+      "total_assets": 28546264000.0,
+      "net_sales": 13409224000.0,
+      "operating_income": 1331316000.0,
+      "profit_loss": 743129000.0,
+      "earnings_per_share": 179.11,
+      "free_cash_flow": 267089000.0
+    }
   }
 }
 ```
 
+### 出力ルール
+
+- **Factのみ**: 財務諸表に記載された数値のみ出力
+- **null出力禁止**: 値が取得できなかった項目はキーごと省略
+- **空prior_year省略**: prior_yearに有効なFactがなければキー自体を出力しない
+- **Derived禁止**: ROE/ROA/マージン/成長率等の再計算可能な値はvaluation-engineの責務
+
+### Fact項目一覧
+
+| キー | 出典 | 説明 |
+|---|---|---|
+| `equity` | BS | 自己資本 |
+| `total_assets` | BS | 総資産 |
+| `interest_bearing_debt` | BS | 有利子負債 |
+| `net_sales` | PL | 売上高 |
+| `operating_income` | PL | 営業利益 |
+| `profit_loss` | PL | 当期純利益 |
+| `earnings_per_share` | PL | 1株当たり利益 |
+| `free_cash_flow` | CF | フリーキャッシュフロー |
+
 ### 含めないデータ（レイヤー分離原則）
 
-| データ | 理由 | 所属レイヤー |
+| データ | 分類 | 所属レイヤー |
 |---|---|---|
+| ROE / ROA / マージン / 成長率 | Derived（再計算可能） | valuation-engine |
 | stock_price / volume / shares_outstanding | 市場Fact | market-dataset |
-| PER / PBR / PSR / PEG / dividend_yield | 派生指標（Derived） | valuation-engine |
+| PER / PBR / PSR / PEG / dividend_yield | Derived（再計算可能） | valuation-engine |
+
+### 出力前バリデーション
+
+JSONExporter は出力前に以下を検証する：
+
+1. metrics 内に Derived 指標が混入していないか → **エラー**
+2. null 値が存在しないか → **エラー**
+3. metrics が空でないか → **警告**
+4. operating_income と profit_loss が同値でないか → **警告**
 
 ## データセット自動生成とプッシュ
 
